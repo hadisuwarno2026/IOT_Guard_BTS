@@ -63,8 +63,9 @@ export default function App() {
         const localTs = localTsStr ? Number(localTsStr) : 0;
         
         let needsRestore = false;
+        const isSupabaseEnabled = !!data.integrationConfig?.supabaseEnabled;
         
-        if (localTs > serverTs) {
+        if (!isSupabaseEnabled && localTs > serverTs) {
           needsRestore = true;
         }
         
@@ -73,7 +74,7 @@ export default function App() {
         const localSitesStr = localStorage.getItem('tbig_sites');
         let restoreData: any = {};
         
-        if (localConfigStr) {
+        if (!isSupabaseEnabled && localConfigStr) {
           try {
             const localConfig = JSON.parse(localConfigStr);
             restoreData.integrationConfig = localConfig;
@@ -85,7 +86,7 @@ export default function App() {
           } catch (e) {}
         }
         
-        if (localSitesStr) {
+        if (!isSupabaseEnabled && localSitesStr) {
           try {
             const localSites = JSON.parse(localSitesStr);
             restoreData.sites = localSites;
