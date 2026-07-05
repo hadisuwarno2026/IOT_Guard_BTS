@@ -277,6 +277,7 @@ async function logAlarmToSupabase(alarm: AlarmLog) {
     const { error } = await client
       .from('ALARM')
       .insert({
+        id: alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4),
         SiteID: alarm.siteId,
         AlarmType: alarm.alarmType,
         Status: alarm.status,
@@ -405,13 +406,7 @@ function saveLocalUsers() {
 // Load local users on startup
 loadLocalUsers();
 
-let sites: Site[] = [];
-
-// Seed initial alarm logs
-let alarmLogs: AlarmLog[] = [];
-
-// Seed initial history logs
-let deviceLogs: DeviceStatusLog[] = [];
+const LOCAL_CONFIG_FILE = path.join(process.cwd(), 'local_config_db.json');
 
 // Init integration configurations
 let integrationConfig: IntegrationConfig = {
@@ -427,6 +422,57 @@ let integrationConfig: IntegrationConfig = {
                        (process.env.SUPABASE_URL.startsWith('http://') || process.env.SUPABASE_URL.startsWith('https://')) && 
                        (process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY))
 };
+
+function loadLocalConfig() {
+  try {
+    if (fs.existsSync(LOCAL_CONFIG_FILE)) {
+      const data = fs.readFileSync(LOCAL_CONFIG_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      integrationConfig = {
+        ...integrationConfig,
+        ...parsed
+      };
+      console.log('[Local DB] Loaded local configuration successfully:', {
+        ...integrationConfig,
+        supabaseKey: integrationConfig.supabaseKey ? '***' : ''
+      });
+    }
+  } catch (err) {
+    console.error('[Local DB] Error loading local config:', err);
+  }
+}
+
+function saveLocalConfig() {
+  try {
+    fs.writeFileSync(LOCAL_CONFIG_FILE, JSON.stringify(integrationConfig, null, 2), 'utf8');
+    console.log('[Local DB] Saved local configuration successfully.');
+  } catch (err) {
+    console.error('[Local DB] Error saving local config:', err);
+  }
+}
+
+// Load config on startup
+loadLocalConfig();
+
+// Load initial state from Supabase on startup if enabled
+if (integrationConfig?.supabaseEnabled) {
+  console.log('[Startup] Supabase is enabled in local config, loading initial state...');
+  loadStateFromSupabase().then((success) => {
+    if (success) {
+      console.log('[Startup] Successfully loaded initial state from Supabase.');
+    } else {
+      console.warn('[Startup] Failed to load initial state from Supabase on startup.');
+    }
+  });
+}
+
+let sites: Site[] = [];
+
+// Seed initial alarm logs
+let alarmLogs: AlarmLog[] = [];
+
+// Seed initial history logs
+let deviceLogs: DeviceStatusLog[] = [];
 
 // Seed audit trail logs
 let auditTrails: AuditTrail[] = [
@@ -474,6 +520,7 @@ app.use((req, res, next) => {
         }
       }
       integrationConfig = mergedConfig;
+      saveLocalConfig();
     }
     if (clientAlarms && Array.isArray(clientAlarms)) {
       alarmLogs = clientAlarms;
@@ -1295,6 +1342,7 @@ app.post('/api/restore-state', (req, res) => {
   }
   if (clientConfig && typeof clientConfig === 'object') {
     integrationConfig = { ...integrationConfig, ...clientConfig };
+    saveLocalConfig();
   }
   if (clientAlarms && Array.isArray(clientAlarms)) {
     alarmLogs = clientAlarms;
@@ -1374,6 +1422,9 @@ app.post('/api/esp32', async (req, res) => {
 
   const oldGrounding = site!.grounding;
   const oldDoor = site!.door;
+  const oldSirene = site!.sirene;
+  const oldTeg = site!.teg;
+  const oldLastRestart = site!.lastRestart;
 
   // Update fields if provided
   if (grounding) site!.grounding = grounding === 'PUTUS' ? 'PUTUS' : 'NORMAL';
@@ -1482,8 +1533,17 @@ app.post('/api/esp32', async (req, res) => {
   deviceLogs.unshift(newDevLog);
   if (deviceLogs.length > 100) deviceLogs.pop();
 
-  // Save device telemetry log to Supabase DEVICE table
-  await logDeviceToSupabase(newDevLog);
+  // Save device telemetry log to Supabase DEVICE table only if state changed (kejadian)
+  const hasChanged = isNew || 
+                     oldGrounding !== site!.grounding || 
+                     oldDoor !== site!.door || 
+                     oldSirene !== site!.sirene || 
+                     oldTeg !== site!.teg || 
+                     oldLastRestart !== site!.lastRestart;
+
+  if (hasChanged) {
+    await logDeviceToSupabase(newDevLog);
+  }
 
   lastUpdateTs = Date.now();
 
@@ -1748,7 +1808,7 @@ app.post('/api/test-alarm', async (req, res) => {
 });
 
 // POST Update Config Settings
-app.post('/api/config', (req, res) => {
+app.post('/api/config', async (req, res) => {
   const { config, username } = req.body;
   if (!config) {
     return res.status(400).json({ error: 'Config is required' });
@@ -1758,6 +1818,14 @@ app.post('/api/config', (req, res) => {
     ...integrationConfig,
     ...config
   };
+
+  saveLocalConfig();
+
+  // If Supabase is enabled, load initial state from Supabase immediately!
+  if (integrationConfig.supabaseEnabled) {
+    console.log('[Settings] Supabase enabled/updated, loading state immediately...');
+    await loadStateFromSupabase();
+  }
 
   lastUpdateTs = Date.now();
   createAuditLog(username || 'Admin', 'CONFIG UPDATE', `Memperbarui konfigurasi sistem. WhatsApp: ${integrationConfig.whatsappEnabled ? 'AKTIF' : 'NONAKTIF'}`);
