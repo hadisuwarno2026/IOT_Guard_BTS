@@ -131,8 +131,9 @@ export default function AlarmTab({
 
   // Filtered Alarm Logs
   const filteredLogs = alarmLogs.filter(log => {
+    const sName = log.siteName || sites.find(s => s.siteId === log.siteId)?.siteName || '';
     const matchesSearch = log.siteId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          log.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          sName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           log.keterangan.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           log.alarmType.toLowerCase().includes(searchQuery.toLowerCase());
     
@@ -559,7 +560,7 @@ export default function AlarmTab({
                         {log.siteId}
                       </td>
                       <td className="py-3.5 px-5 font-semibold text-slate-700">
-                        {log.siteName}
+                        {log.siteName || assocSite?.siteName || 'Unknown Site'}
                       </td>
                       <td className="py-3.5 px-5">
                         <span className={`px-2 py-1 rounded text-[10px] font-mono font-bold inline-block ${getAlarmTypeBadge(log.alarmType)}`}>
