@@ -410,30 +410,7 @@ async function logAlarmToSupabase(alarm: AlarmLog) {
     for (const table of tableCandidates) {
       const isLowercaseTable = table !== 'ALARM';
       
-      // Attempt 1: with custom id
-      const payloadWithId = isLowercaseTable ? {
-        id: alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4),
-        site_id: alarm.siteId,
-        alarm_type: alarm.alarmType,
-        status: alarm.status,
-        keterangan: alarm.keterangan,
-        timestamp: alarm.timestamp
-      } : {
-        id: alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4),
-        SiteID: alarm.siteId,
-        AlarmType: alarm.alarmType,
-        Status: alarm.status,
-        Keterangan: alarm.keterangan,
-        Timestamp: alarm.timestamp
-      };
-
-      const { error: error1 } = await client.from(table).insert(payloadWithId);
-      if (!error1) {
-        console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (with ID)`);
-        return;
-      }
-
-      // Attempt 2: without custom id (let database auto-generate)
+      // Payload without ID - let DB handle identity / serial / auto-increment
       const payloadWithoutId = isLowercaseTable ? {
         site_id: alarm.siteId,
         alarm_type: alarm.alarmType,
@@ -448,13 +425,46 @@ async function logAlarmToSupabase(alarm: AlarmLog) {
         Timestamp: alarm.timestamp
       };
 
-      const { error: error2 } = await client.from(table).insert(payloadWithoutId);
-      if (!error2) {
+      // 1. Try Attempt without ID (safe for auto-increment bigint / serial / UUID columns)
+      const { error: error1 } = await client.from(table).insert(payloadWithoutId);
+      if (!error1) {
         console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (without ID)`);
         return;
       }
+
+      // 2. Try Attempt with random integer ID (safe for explicit bigint columns)
+      const randomIntId = Math.floor(100000 + Math.random() * 900000);
+      const payloadWithIntId = isLowercaseTable ? {
+        ...payloadWithoutId,
+        id: randomIntId
+      } : {
+        ...payloadWithoutId,
+        id: randomIntId
+      };
       
-      console.warn(`[Supabase] Failed to insert ALARM to table "${table}":`, error1.message, '||', error2.message);
+      const { error: error2 } = await client.from(table).insert(payloadWithIntId);
+      if (!error2) {
+        console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (with random integer ID)`);
+        return;
+      }
+
+      // 3. Try Attempt with original string ID (safe for text / varchar ID columns)
+      const stringId = alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4);
+      const payloadWithStringId = isLowercaseTable ? {
+        ...payloadWithoutId,
+        id: stringId
+      } : {
+        ...payloadWithoutId,
+        id: stringId
+      };
+
+      const { error: error3 } = await client.from(table).insert(payloadWithStringId);
+      if (!error3) {
+        console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (with string ID)`);
+        return;
+      }
+      
+      console.warn(`[Supabase] Failed to insert ALARM to table "${table}". Attempt 1: ${error1.message}, Attempt 2: ${error2.message}, Attempt 3: ${error3.message}`);
     }
   } catch (err) {
     console.error('[Supabase] Exception inserting ALARM:', err);
