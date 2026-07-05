@@ -740,7 +740,7 @@ export default function DashboardTab({
                     </div>
 
                     <div className="text-xs font-bold text-slate-800 tracking-tight">
-                      {item.siteId} - {item.siteName}
+                      {item.siteId} - {item.siteName || sites.find(s => s.siteId === item.siteId)?.siteName || 'Unknown Site'}
                     </div>
                   </div>
                 ))
