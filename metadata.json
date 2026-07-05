@@ -1,0 +1,6 @@
+{
+  "name": "BTS Monitoring & Security System",
+  "description": "Real-time Monitoring of BTS Sites with Grounding Alarm, Door Sensor, Siren Control, and WhatsApp Notifications Simulation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
