@@ -76,9 +76,10 @@ export default function DeviceStatusTab({ sites, deviceLogs, onInjectTestAlarm, 
   // Filter and search
   const filteredLogs = deviceLogs.filter(log => {
     // Search query matching Site ID or Site Name
+    const sName = log.siteName || sites.find(s => s.siteId === log.siteId)?.siteName || '';
     const matchesSearch = 
       log.siteId.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-      log.siteName.toLowerCase().includes(logSearchQuery.toLowerCase());
+      sName.toLowerCase().includes(logSearchQuery.toLowerCase());
     
     // Site filter
     const matchesSite = logSiteFilter === 'SEMUA' || log.siteId === logSiteFilter;
@@ -539,6 +540,7 @@ export default function DeviceStatusTab({ sites, deviceLogs, onInjectTestAlarm, 
                   paginatedLogs.map((log, index) => {
                     const isGroundingBroken = log.grounding === 'PUTUS';
                     const isDoorOpened = log.door === 'TERBUKA';
+                    const assocSite = sites.find(s => s.siteId === log.siteId);
                     return (
                       <tr key={index} className="hover:bg-slate-50">
                         <td className="py-2 px-3 text-slate-500 select-none">
@@ -548,7 +550,7 @@ export default function DeviceStatusTab({ sites, deviceLogs, onInjectTestAlarm, 
                           {log.siteId}
                         </td>
                         <td className="py-2 px-3 font-semibold text-slate-800 font-sans">
-                          {log.siteName}
+                          {log.siteName || assocSite?.siteName || 'Unknown Site'}
                         </td>
                         <td className={`py-2 px-3 font-bold ${isGroundingBroken ? 'text-red-500 animate-pulse' : 'text-emerald-600'}`}>
                           {log.grounding}
