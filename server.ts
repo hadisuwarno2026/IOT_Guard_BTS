@@ -1343,11 +1343,59 @@ app.get('/api/users', async (req, res) => {
 
   if (isSupabase) {
     try {
-      const { data, error } = await client
+      let { data, error } = await client
         .from('profiles')
         .select('*');
       
       if (!error && data) {
+        // Automatically check and seed missing default administrator and user into the database profiles
+        const hasAdmin = data.some((p: any) => {
+          const pUsername = String(p.username || p.user_name || p.email || '').trim().toLowerCase();
+          return pUsername === 'administrator' || pUsername.startsWith('administrator@');
+        });
+        const hasUser = data.some((p: any) => {
+          const pUsername = String(p.username || p.user_name || p.email || '').trim().toLowerCase();
+          return pUsername === 'user' || pUsername.startsWith('user@');
+        });
+
+        if (!hasAdmin) {
+          const adminPayload = {
+            id: 'a58a26b2-8618-4ab9-9497-a38cc0ea8b4e',
+            nama: 'Administrator',
+            role: 'admin',
+            updated_at: new Date().toISOString(),
+            username: 'administrator',
+            user_name: 'administrator',
+            email: 'administrator@towerguard.com',
+            email_address: 'administrator@towerguard.com',
+            password: 'admin123',
+            is_read_only: false
+          };
+          client.from('profiles').insert(adminPayload).then(({ error: e }) => {
+            if (e) console.warn('[Supabase Seed] Admin insert error:', e.message);
+          });
+          data.push(adminPayload);
+        }
+
+        if (!hasUser) {
+          const userPayload = {
+            id: '5b141abb-2d47-4016-8b31-8550eb688c2f',
+            nama: 'User Regular',
+            role: 'user',
+            updated_at: new Date().toISOString(),
+            username: 'user',
+            user_name: 'user',
+            email: 'user@towerguard.com',
+            email_address: 'user@towerguard.com',
+            password: 'user123',
+            is_read_only: false
+          };
+          client.from('profiles').insert(userPayload).then(({ error: e }) => {
+            if (e) console.warn('[Supabase Seed] User insert error:', e.message);
+          });
+          data.push(userPayload);
+        }
+
         const supabaseUsers = data.map((profile: any) => {
           // Robustly determine a username if there is no username column
           const rawUsername = profile.username || profile.email || profile.email_address || profile.user_name || profile.nama?.toLowerCase().replace(/\s+/g, '') || 'operator';
@@ -1366,23 +1414,8 @@ app.get('/api/users', async (req, res) => {
           };
         });
 
-        // Merge supabase users and local users (avoiding duplicates by username or ID)
-        const mergedUsers = [...supabaseUsers];
-        for (const localUser of localUsers) {
-          if (!mergedUsers.some(u => u.username.toLowerCase() === localUser.username.toLowerCase() || u.id === localUser.id)) {
-            mergedUsers.push({
-              id: localUser.id,
-              username: localUser.username,
-              displayName: localUser.displayName,
-              role: localUser.role,
-              lastActive: 'Aktif Lokal / Memori',
-              permissions: localUser.permissions || [],
-              isReadOnly: localUser.isReadOnly || false
-            });
-          }
-        }
-
-        return res.json({ status: 'success', users: mergedUsers });
+        // DO NOT merge local memory users. Keep it entirely database-driven!
+        return res.json({ status: 'success', users: supabaseUsers });
       } else if (error) {
         console.warn('[Supabase] Error listing profiles:', error.message);
       }
@@ -1557,45 +1590,47 @@ app.put('/api/users/:id', async (req, res) => {
   const client = getSupabaseClient();
   const isSupabase = !!(client && integrationConfig?.supabaseEnabled);
 
+  const targetUser = localUsers.find(u => u.id === id);
+  const searchVal = targetUser?.username || id;
+
   if (isSupabase) {
     try {
-      let { error: dbErr } = await client
-        .from('profiles')
-        .update({
-          nama: displayName,
-          role: role === 'admin' ? 'admin' : 'user',
-          updated_at: new Date().toISOString(),
-          is_read_only: isReadOnly !== undefined ? !!isReadOnly : undefined
-        })
-        .eq('id', id);
+      const updateData = {
+        nama: displayName,
+        role: role === 'admin' ? 'admin' : 'user',
+        updated_at: new Date().toISOString(),
+        is_read_only: isReadOnly !== undefined ? !!isReadOnly : undefined
+      };
 
-      if (dbErr) {
-        console.warn('[Supabase] Error updating profile by id:', dbErr.message);
-        const targetUser = localUsers.find(u => u.id === id);
-        const searchVal = targetUser?.username || id;
-        const { error: dbErr2 } = await client
-          .from('profiles')
-          .update({
-            nama: displayName,
-            role: role === 'admin' ? 'admin' : 'user',
-            updated_at: new Date().toISOString(),
-            is_read_only: isReadOnly !== undefined ? !!isReadOnly : undefined
-          })
-          .or(`username.eq.${searchVal},user_name.eq.${searchVal},email.eq.${searchVal},email_address.eq.${searchVal}`);
+      console.log(`[Supabase Update] Attempting to update user "${id}" / "${searchVal}"...`);
 
-        if (!dbErr2) {
-          dbErr = null;
-        } else {
-          console.warn('[Supabase] Fallback update also failed:', dbErr2.message);
-        }
-      }
+      // Try updating where id = id
+      await client.from('profiles').update(updateData).eq('id', id);
+
+      // Try updating where username = id or searchVal
+      await client.from('profiles').update(updateData).eq('username', id);
+      await client.from('profiles').update(updateData).eq('username', searchVal);
+
+      // Try updating where user_name = id or searchVal
+      await client.from('profiles').update(updateData).eq('user_name', id);
+      await client.from('profiles').update(updateData).eq('user_name', searchVal);
+
+      // Try updating where email = id or searchVal
+      await client.from('profiles').update(updateData).eq('email', id);
+      await client.from('profiles').update(updateData).eq('email', searchVal);
+
+      // Try updating where email_address = id or searchVal
+      await client.from('profiles').update(updateData).eq('email_address', id);
+      await client.from('profiles').update(updateData).eq('email_address', searchVal);
+
+      console.log('[Supabase Update] Done running sequential update checks.');
     } catch (err) {
       console.warn('[Supabase] Exception updating user profile:', err);
     }
   }
 
   // Update local state
-  const idx = localUsers.findIndex(u => u.id === id);
+  const idx = localUsers.findIndex(u => u.id === id || u.username === searchVal);
   if (idx !== -1) {
     localUsers[idx].displayName = displayName;
     localUsers[idx].role = role;
@@ -1633,27 +1668,31 @@ app.delete('/api/users/:id', async (req, res) => {
         }
       }
 
-      // Try deleting by id
-      let { error: dbErr } = await client
-        .from('profiles')
-        .delete()
-        .eq('id', id);
+      console.log(`[Supabase Delete] Attempting to delete user "${id}" / "${searchVal}"...`);
 
-      if (dbErr) {
-        console.warn('[Supabase] Error deleting profile by id, trying fallbacks:', dbErr.message);
-        
-        const { error: dbErr2 } = await client
-          .from('profiles')
-          .delete()
-          .or(`username.eq.${searchVal},user_name.eq.${searchVal},email.eq.${searchVal},email_address.eq.${searchVal}`);
+      // Deleting in Supabase can be done by running sequential eq() checks.
+      // This ensures that whichever column actually contains the identifier, that record will be deleted!
+      
+      // 1. Delete where id = id
+      await client.from('profiles').delete().eq('id', id);
 
-        if (!dbErr2) {
-          console.log('[Supabase] Successfully deleted profile via username/email fallback!');
-          dbErr = null;
-        } else {
-          console.warn('[Supabase] Fallback delete also failed:', dbErr2.message);
-        }
-      }
+      // 2. Delete where username = id or searchVal
+      await client.from('profiles').delete().eq('username', id);
+      await client.from('profiles').delete().eq('username', searchVal);
+
+      // 3. Delete where user_name = id or searchVal
+      await client.from('profiles').delete().eq('user_name', id);
+      await client.from('profiles').delete().eq('user_name', searchVal);
+
+      // 4. Delete where email = id or searchVal
+      await client.from('profiles').delete().eq('email', id);
+      await client.from('profiles').delete().eq('email', searchVal);
+
+      // 5. Delete where email_address = id or searchVal
+      await client.from('profiles').delete().eq('email_address', id);
+      await client.from('profiles').delete().eq('email_address', searchVal);
+
+      console.log('[Supabase Delete] Done running sequential deletion checks.');
     } catch (err) {
       console.warn('[Supabase] Exception deleting user profile:', err);
     }
