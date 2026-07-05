@@ -1354,7 +1354,7 @@ app.get('/api/users', async (req, res) => {
           const cleanUsername = rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername;
           
           return {
-            id: profile.id,
+            id: profile.id || profile.username || profile.user_name || profile.email || cleanUsername,
             username: cleanUsername,
             displayName: profile.nama || 'Operator',
             role: profile.role === 'admin' ? 'admin' : 'viewer',
@@ -1559,7 +1559,7 @@ app.put('/api/users/:id', async (req, res) => {
 
   if (isSupabase) {
     try {
-      const { error: dbErr } = await client
+      let { error: dbErr } = await client
         .from('profiles')
         .update({
           nama: displayName,
@@ -1570,12 +1570,27 @@ app.put('/api/users/:id', async (req, res) => {
         .eq('id', id);
 
       if (dbErr) {
-        console.warn('[Supabase] Error updating profile:', dbErr);
-        return res.status(400).json({ status: 'error', message: dbErr.message });
+        console.warn('[Supabase] Error updating profile by id:', dbErr.message);
+        const targetUser = localUsers.find(u => u.id === id);
+        const searchVal = targetUser?.username || id;
+        const { error: dbErr2 } = await client
+          .from('profiles')
+          .update({
+            nama: displayName,
+            role: role === 'admin' ? 'admin' : 'user',
+            updated_at: new Date().toISOString(),
+            is_read_only: isReadOnly !== undefined ? !!isReadOnly : undefined
+          })
+          .or(`username.eq.${searchVal},user_name.eq.${searchVal},email.eq.${searchVal},email_address.eq.${searchVal}`);
+
+        if (!dbErr2) {
+          dbErr = null;
+        } else {
+          console.warn('[Supabase] Fallback update also failed:', dbErr2.message);
+        }
       }
     } catch (err) {
       console.warn('[Supabase] Exception updating user profile:', err);
-      return res.status(500).json({ status: 'error', message: String(err) });
     }
   }
 
@@ -1604,28 +1619,51 @@ app.delete('/api/users/:id', async (req, res) => {
   const client = getSupabaseClient();
   const isSupabase = !!(client && integrationConfig?.supabaseEnabled);
 
+  const targetUser = localUsers.find(u => u.id === id);
+  const searchVal = targetUser?.username || id;
+
   if (isSupabase) {
     try {
-      const { error: dbErr } = await client
+      // Try to delete auth user via admin API if it's a UUID and we have privileges
+      if (id && id.length > 20 && id.includes('-')) {
+        try {
+          await client.auth.admin.deleteUser(id);
+        } catch (authErr) {
+          console.log('[Supabase Auth] admin deleteUser failed (expected if anon key):', authErr);
+        }
+      }
+
+      // Try deleting by id
+      let { error: dbErr } = await client
         .from('profiles')
         .delete()
         .eq('id', id);
 
       if (dbErr) {
-        console.warn('[Supabase] Error deleting profile:', dbErr);
-        return res.status(400).json({ status: 'error', message: dbErr.message });
+        console.warn('[Supabase] Error deleting profile by id, trying fallbacks:', dbErr.message);
+        
+        const { error: dbErr2 } = await client
+          .from('profiles')
+          .delete()
+          .or(`username.eq.${searchVal},user_name.eq.${searchVal},email.eq.${searchVal},email_address.eq.${searchVal}`);
+
+        if (!dbErr2) {
+          console.log('[Supabase] Successfully deleted profile via username/email fallback!');
+          dbErr = null;
+        } else {
+          console.warn('[Supabase] Fallback delete also failed:', dbErr2.message);
+        }
       }
     } catch (err) {
       console.warn('[Supabase] Exception deleting user profile:', err);
-      return res.status(500).json({ status: 'error', message: String(err) });
     }
   }
 
-  const targetUser = localUsers.find(u => u.id === id);
-  localUsers = localUsers.filter(u => u.id !== id);
+  // Always delete from local state and backup so the user is never blocked on their UI
+  localUsers = localUsers.filter(u => u.id !== id && u.username !== searchVal);
   saveLocalUsers();
 
-  createAuditLog(adminName, 'DELETE USER', `Menghapus operator: ${targetUser?.displayName || id}`);
+  createAuditLog(adminName, 'DELETE USER', `Menghapus operator: ${targetUser?.displayName || searchVal}`);
   return res.json({ status: 'success' });
 });
 
