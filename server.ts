@@ -136,35 +136,98 @@ async function loadStateFromSupabase() {
   }
 
   try {
-    const { data: dbSites, error: sitesError } = await client
-      .from('SITE')
-      .select('*');
-    
+    // 1. Try to fetch SITE (uppercase/lowercase/plural table names)
+    let dbSites: any[] = [];
+    let { data: sitesData, error: sitesError } = await client.from('SITE').select('*');
     if (sitesError) {
-      console.warn('[Supabase] Error loading SITE table:', sitesError.message);
-      return false;
+      console.warn('[Supabase] SITE uppercase failed, trying lowercase fallback...', sitesError.message);
+      const { data: sitesDataLower, error: sitesErrorLower } = await client.from('site').select('*');
+      if (sitesErrorLower) {
+        console.warn('[Supabase] site lowercase failed, trying sites fallback...', sitesErrorLower.message);
+        const { data: sitesDataPlural, error: sitesErrorPlural } = await client.from('sites').select('*');
+        if (sitesErrorPlural) {
+          console.error('[Supabase] All SITE loading attempts failed:', sitesErrorPlural.message);
+          return false;
+        } else {
+          dbSites = sitesDataPlural || [];
+        }
+      } else {
+        dbSites = sitesDataLower || [];
+      }
+    } else {
+      dbSites = sitesData || [];
     }
 
-    const { data: dbAlarms, error: alarmsError } = await client
-      .from('ALARM')
-      .select('*')
-      .order('Timestamp', { ascending: false })
-      .limit(100);
-
+    // 2. Try to fetch ALARM (uppercase/lowercase/plural with upper or lowercase timestamp sorting)
+    let dbAlarms: any[] = [];
+    let { data: alarmsData, error: alarmsError } = await client.from('ALARM').select('*').order('Timestamp', { ascending: false }).limit(100);
     if (alarmsError) {
-      console.warn('[Supabase] Error loading ALARM table:', alarmsError.message);
-      return false;
+      let { data: alarmsDataTry2, error: alarmsErrorTry2 } = await client.from('ALARM').select('*').order('timestamp', { ascending: false }).limit(100);
+      if (alarmsErrorTry2) {
+        console.warn('[Supabase] ALARM uppercase failed, trying lowercase table...', alarmsErrorTry2.message);
+        const { data: alarmsDataLower, error: alarmsErrorLower } = await client.from('alarm').select('*').order('timestamp', { ascending: false }).limit(100);
+        if (alarmsErrorLower) {
+          const { data: alarmsDataLowerTry2, error: alarmsErrorLowerTry2 } = await client.from('alarm').select('*').order('Timestamp', { ascending: false }).limit(100);
+          if (alarmsErrorLowerTry2) {
+            console.warn('[Supabase] alarm lowercase failed, trying alarms fallback...', alarmsErrorLowerTry2.message);
+            const { data: alarmsDataPlural, error: alarmsErrorPlural } = await client.from('alarms').select('*').order('timestamp', { ascending: false }).limit(100);
+            if (alarmsErrorPlural) {
+              const { data: alarmsDataPluralTry2, error: alarmsErrorPluralTry2 } = await client.from('alarms').select('*').order('Timestamp', { ascending: false }).limit(100);
+              if (alarmsErrorPluralTry2) {
+                console.error('[Supabase] All ALARM loading attempts failed:', alarmsErrorPluralTry2.message);
+              } else {
+                dbAlarms = alarmsDataPluralTry2 || [];
+              }
+            } else {
+              dbAlarms = alarmsDataPlural || [];
+            }
+          } else {
+            dbAlarms = alarmsDataLowerTry2 || [];
+          }
+        } else {
+          dbAlarms = alarmsDataLower || [];
+        }
+      } else {
+        dbAlarms = alarmsDataTry2 || [];
+      }
+    } else {
+      dbAlarms = alarmsData || [];
     }
 
-    const { data: dbDevices, error: devicesError } = await client
-      .from('DEVICE')
-      .select('*')
-      .order('Timestamp', { ascending: false })
-      .limit(100);
-
+    // 3. Try to fetch DEVICE (uppercase/lowercase/plural with upper or lowercase timestamp sorting)
+    let dbDevices: any[] = [];
+    let { data: devicesData, error: devicesError } = await client.from('DEVICE').select('*').order('Timestamp', { ascending: false }).limit(100);
     if (devicesError) {
-      console.warn('[Supabase] Error loading DEVICE table:', devicesError.message);
-      return false;
+      let { data: devicesDataTry2, error: devicesErrorTry2 } = await client.from('DEVICE').select('*').order('timestamp', { ascending: false }).limit(100);
+      if (devicesErrorTry2) {
+        console.warn('[Supabase] DEVICE uppercase failed, trying lowercase table...', devicesErrorTry2.message);
+        const { data: devicesDataLower, error: devicesErrorLower } = await client.from('device').select('*').order('timestamp', { ascending: false }).limit(100);
+        if (devicesErrorLower) {
+          const { data: devicesDataLowerTry2, error: devicesErrorLowerTry2 } = await client.from('device').select('*').order('Timestamp', { ascending: false }).limit(100);
+          if (devicesErrorLowerTry2) {
+            console.warn('[Supabase] device lowercase failed, trying devices fallback...', devicesErrorLowerTry2.message);
+            const { data: devicesDataPlural, error: devicesErrorPlural } = await client.from('devices').select('*').order('timestamp', { ascending: false }).limit(100);
+            if (devicesErrorPlural) {
+              const { data: devicesDataPluralTry2, error: devicesErrorPluralTry2 } = await client.from('devices').select('*').order('Timestamp', { ascending: false }).limit(100);
+              if (devicesErrorPluralTry2) {
+                console.error('[Supabase] All DEVICE loading attempts failed:', devicesErrorPluralTry2.message);
+              } else {
+                dbDevices = devicesDataPluralTry2 || [];
+              }
+            } else {
+              dbDevices = devicesDataPlural || [];
+            }
+          } else {
+            dbDevices = devicesDataLowerTry2 || [];
+          }
+        } else {
+          dbDevices = devicesDataLower || [];
+        }
+      } else {
+        dbDevices = devicesDataTry2 || [];
+      }
+    } else {
+      dbDevices = devicesData || [];
     }
 
     const loadedSites = dbSites.map((s: any) => mapDbSite(s));
@@ -210,38 +273,93 @@ async function saveSiteToSupabase(site: Site) {
   const client = getSupabaseClient();
   if (!client || !integrationConfig?.supabaseEnabled) return;
   try {
-    const { error } = await client
-      .from('SITE')
-      .upsert({
-        SiteID: site.siteId,
-        SiteName: site.siteName,
-        Lokasi: site.location,
-        Latitude: site.latitude,
-        Longitude: site.longitude,
-        PhoneNo: site.phoneNo || '',
-        PackageType: site.packageType || '',
-        PackageRefillDate: site.packageRefillDate || '',
-        PackageExpiryDate: site.packageExpiryDate || ''
-      }, { onConflict: 'SiteID' });
-    if (error) {
-      console.warn('[Supabase] PascalCase SITE upsert failed, trying lowercase fallback...', error.message);
-      const { error: error2 } = await client
-        .from('SITE')
-        .upsert({
-          site_id: site.siteId,
-          site_name: site.siteName,
-          location: site.location,
-          latitude: site.latitude,
-          longitude: site.longitude,
-          phone_no: site.phoneNo || '',
-          package_type: site.packageType || '',
-          package_refill_date: site.packageRefillDate || '',
-          package_expiry_date: site.packageExpiryDate || ''
-        }, { onConflict: 'site_id' });
-      if (error2) {
-        console.error('[Supabase] Lowercase fallback SITE upsert failed too:', error2.message);
+    const tableCandidates = ['SITE', 'site', 'sites'];
+    for (const table of tableCandidates) {
+      const isPascalTable = table === 'SITE';
+      
+      if (isPascalTable) {
+        // Attempt 1: PascalCase columns
+        const { error: errorPascal } = await client
+          .from(table)
+          .upsert({
+            SiteID: site.siteId,
+            SiteName: site.siteName,
+            Lokasi: site.location,
+            Latitude: site.latitude,
+            Longitude: site.longitude,
+            PhoneNo: site.phoneNo || '',
+            PackageType: site.packageType || '',
+            PackageRefillDate: site.packageRefillDate || '',
+            PackageExpiryDate: site.packageExpiryDate || ''
+          }, { onConflict: 'SiteID' });
+        
+        if (!errorPascal) {
+          console.log(`[Supabase] Successfully saved SITE to table "${table}" (PascalCase)`);
+          return;
+        }
+
+        // Attempt 2: lowercase columns on PascalCase table
+        const { error: errorPascalLower } = await client
+          .from(table)
+          .upsert({
+            site_id: site.siteId,
+            site_name: site.siteName,
+            location: site.location,
+            latitude: site.latitude,
+            longitude: site.longitude,
+            phone_no: site.phoneNo || '',
+            package_type: site.packageType || '',
+            package_refill_date: site.packageRefillDate || '',
+            package_expiry_date: site.packageExpiryDate || ''
+          }, { onConflict: 'site_id' });
+        
+        if (!errorPascalLower) {
+          console.log(`[Supabase] Successfully saved SITE to table "${table}" (lowercase keys)`);
+          return;
+        }
+      } else {
+        // Attempt 3: lowercase table with lowercase columns
+        const { error: errorLower } = await client
+          .from(table)
+          .upsert({
+            site_id: site.siteId,
+            site_name: site.siteName,
+            location: site.location,
+            latitude: site.latitude,
+            longitude: site.longitude,
+            phone_no: site.phoneNo || '',
+            package_type: site.packageType || '',
+            package_refill_date: site.packageRefillDate || '',
+            package_expiry_date: site.packageExpiryDate || ''
+          }, { onConflict: 'site_id' });
+        
+        if (!errorLower) {
+          console.log(`[Supabase] Successfully saved SITE to table "${table}" (lowercase)`);
+          return;
+        }
+
+        // Attempt 4: lowercase table with PascalCase columns
+        const { error: errorLowerPascal } = await client
+          .from(table)
+          .upsert({
+            SiteID: site.siteId,
+            SiteName: site.siteName,
+            Lokasi: site.location,
+            Latitude: site.latitude,
+            Longitude: site.longitude,
+            PhoneNo: site.phoneNo || '',
+            PackageType: site.packageType || '',
+            PackageRefillDate: site.packageRefillDate || '',
+            PackageExpiryDate: site.packageExpiryDate || ''
+          }, { onConflict: 'SiteID' });
+        
+        if (!errorLowerPascal) {
+          console.log(`[Supabase] Successfully saved SITE to table "${table}" (PascalCase keys)`);
+          return;
+        }
       }
     }
+    console.error('[Supabase] All SITE upsert attempts failed.');
   } catch (err) {
     console.error('[Supabase] Error upserting SITE:', err);
   }
@@ -251,18 +369,31 @@ async function deleteSiteFromSupabase(siteId: string) {
   const client = getSupabaseClient();
   if (!client || !integrationConfig?.supabaseEnabled) return;
   try {
-    const { error } = await client
-      .from('SITE')
-      .delete()
-      .eq('SiteID', siteId);
-    if (error) {
-      console.warn('[Supabase] PascalCase delete SITE failed, trying lowercase fallback...', error.message);
-      const { error: error2 } = await client
-        .from('SITE')
-        .delete()
-        .eq('site_id', siteId);
-      if (error2) {
-        console.error('[Supabase] Lowercase fallback delete SITE failed too:', error2.message);
+    const tableCandidates = ['SITE', 'site', 'sites'];
+    for (const table of tableCandidates) {
+      const isPascalTable = table === 'SITE';
+      if (isPascalTable) {
+        const { error: error1 } = await client.from(table).delete().eq('SiteID', siteId);
+        if (!error1) {
+          console.log(`[Supabase] Deleted site from table "${table}" (PascalCase)`);
+          return;
+        }
+        const { error: error2 } = await client.from(table).delete().eq('site_id', siteId);
+        if (!error2) {
+          console.log(`[Supabase] Deleted site from table "${table}" (lowercase)`);
+          return;
+        }
+      } else {
+        const { error: error3 } = await client.from(table).delete().eq('site_id', siteId);
+        if (!error3) {
+          console.log(`[Supabase] Deleted site from table "${table}" (lowercase)`);
+          return;
+        }
+        const { error: error4 } = await client.from(table).delete().eq('SiteID', siteId);
+        if (!error4) {
+          console.log(`[Supabase] Deleted site from table "${table}" (PascalCase)`);
+          return;
+        }
       }
     }
   } catch (err) {
@@ -274,19 +405,59 @@ async function logAlarmToSupabase(alarm: AlarmLog) {
   const client = getSupabaseClient();
   if (!client || !integrationConfig?.supabaseEnabled) return;
   try {
-    const { error } = await client
-      .from('ALARM')
-      .insert({
+    const tableCandidates = ['ALARM', 'alarm', 'alarms'];
+    
+    for (const table of tableCandidates) {
+      const isLowercaseTable = table !== 'ALARM';
+      
+      // Attempt 1: with custom id
+      const payloadWithId = isLowercaseTable ? {
+        id: alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4),
+        site_id: alarm.siteId,
+        alarm_type: alarm.alarmType,
+        status: alarm.status,
+        keterangan: alarm.keterangan,
+        timestamp: alarm.timestamp
+      } : {
         id: alarm.id || 'AL-' + Math.floor(100+Math.random()*900) + '-' + Date.now().toString().slice(-4),
         SiteID: alarm.siteId,
         AlarmType: alarm.alarmType,
         Status: alarm.status,
         Keterangan: alarm.keterangan,
         Timestamp: alarm.timestamp
-      });
-    if (error) console.error('[Supabase] Error inserting ALARM:', error.message);
+      };
+
+      const { error: error1 } = await client.from(table).insert(payloadWithId);
+      if (!error1) {
+        console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (with ID)`);
+        return;
+      }
+
+      // Attempt 2: without custom id (let database auto-generate)
+      const payloadWithoutId = isLowercaseTable ? {
+        site_id: alarm.siteId,
+        alarm_type: alarm.alarmType,
+        status: alarm.status,
+        keterangan: alarm.keterangan,
+        timestamp: alarm.timestamp
+      } : {
+        SiteID: alarm.siteId,
+        AlarmType: alarm.alarmType,
+        Status: alarm.status,
+        Keterangan: alarm.keterangan,
+        Timestamp: alarm.timestamp
+      };
+
+      const { error: error2 } = await client.from(table).insert(payloadWithoutId);
+      if (!error2) {
+        console.log(`[Supabase] Successfully inserted ALARM log to table "${table}" (without ID)`);
+        return;
+      }
+      
+      console.warn(`[Supabase] Failed to insert ALARM to table "${table}":`, error1.message, '||', error2.message);
+    }
   } catch (err) {
-    console.error('[Supabase] Error inserting ALARM:', err);
+    console.error('[Supabase] Exception inserting ALARM:', err);
   }
 }
 
@@ -294,15 +465,37 @@ async function closeAlarmInSupabase(siteId: string, alarmType: string) {
   const client = getSupabaseClient();
   if (!client || !integrationConfig?.supabaseEnabled) return;
   try {
-    const { error } = await client
-      .from('ALARM')
-      .update({ Status: 'CLOSED' })
-      .eq('SiteID', siteId)
-      .eq('AlarmType', alarmType)
-      .eq('Status', 'ACTIVE');
-    if (error) console.error('[Supabase] Error updating ALARM status:', error.message);
+    const tableCandidates = ['ALARM', 'alarm', 'alarms'];
+    
+    for (const table of tableCandidates) {
+      const isLowercaseTable = table !== 'ALARM';
+      
+      if (!isLowercaseTable) {
+        const { error } = await client
+          .from(table)
+          .update({ Status: 'CLOSED' })
+          .eq('SiteID', siteId)
+          .eq('AlarmType', alarmType)
+          .eq('Status', 'ACTIVE');
+        if (!error) {
+          console.log(`[Supabase] Successfully closed ALARM in table "${table}" (PascalCase)`);
+          return;
+        }
+      } else {
+        const { error } = await client
+          .from(table)
+          .update({ status: 'CLOSED' })
+          .eq('site_id', siteId)
+          .eq('alarm_type', alarmType)
+          .eq('status', 'ACTIVE');
+        if (!error) {
+          console.log(`[Supabase] Successfully closed ALARM in table "${table}" (lowercase)`);
+          return;
+        }
+      }
+    }
   } catch (err) {
-    console.error('[Supabase] Error updating ALARM status:', err);
+    console.error('[Supabase] Exception closing ALARM:', err);
   }
 }
 
@@ -310,32 +503,79 @@ async function logDeviceToSupabase(device: DeviceStatusLog) {
   const client = getSupabaseClient();
   if (!client || !integrationConfig?.supabaseEnabled) return;
   try {
-    const { error } = await client
-      .from('DEVICE')
-      .insert({
-        SiteID: device.siteId,
-        Grounding: device.grounding,
-        Door: device.door,
-        Sirene: device.sirene,
-        GSM: device.gsm,
-        RSSI: device.rssi,
-        Timestamp: device.timestamp
-      });
-    if (error) {
-      // Try integer fallback in case user columns are defined as INTEGER (1/0)
-      const { error: fallbackError } = await client
-        .from('DEVICE')
-        .insert({
-          SiteID: device.siteId,
-          Grounding: device.grounding === 'NORMAL' ? 1 : 0,
-          Door: device.door === 'TERTUTUP' ? 1 : 0,
-          Sirene: device.sirene === 'ON' ? 1 : 0,
-          GSM: device.gsm,
-          RSSI: device.rssi,
-          Timestamp: device.timestamp
-        });
-      if (fallbackError) {
-        console.error('[Supabase] Fallback insert to DEVICE failed:', fallbackError.message);
+    const tableCandidates = ['DEVICE', 'device', 'devices'];
+    
+    for (const table of tableCandidates) {
+      const isLowercaseTable = table !== 'DEVICE';
+      
+      if (!isLowercaseTable) {
+        // 1. Try PascalCase with string values
+        const { error: error1 } = await client
+          .from(table)
+          .insert({
+            SiteID: device.siteId,
+            Grounding: device.grounding,
+            Door: device.door,
+            Sirene: device.sirene,
+            GSM: device.gsm,
+            RSSI: device.rssi,
+            Timestamp: device.timestamp
+          });
+        if (!error1) {
+          console.log(`[Supabase] Successfully logged device to "${table}" (PascalCase string)`);
+          return;
+        }
+
+        // 2. Try PascalCase with integer (1/0) values
+        const { error: error2 } = await client
+          .from(table)
+          .insert({
+            SiteID: device.siteId,
+            Grounding: device.grounding === 'NORMAL' ? 1 : 0,
+            Door: device.door === 'TERTUTUP' ? 1 : 0,
+            Sirene: device.sirene === 'ON' ? 1 : 0,
+            GSM: device.gsm,
+            RSSI: device.rssi,
+            Timestamp: device.timestamp
+          });
+        if (!error2) {
+          console.log(`[Supabase] Successfully logged device to "${table}" (PascalCase integer)`);
+          return;
+        }
+      } else {
+        // 3. Try lowercase with string values
+        const { error: error3 } = await client
+          .from(table)
+          .insert({
+            site_id: device.siteId,
+            grounding: device.grounding,
+            door: device.door,
+            sirene: device.sirene,
+            gsm: device.gsm,
+            rssi: device.rssi,
+            timestamp: device.timestamp
+          });
+        if (!error3) {
+          console.log(`[Supabase] Successfully logged device to "${table}" (lowercase string)`);
+          return;
+        }
+
+        // 4. Try lowercase with integer (1/0) values
+        const { error: error4 } = await client
+          .from(table)
+          .insert({
+            site_id: device.siteId,
+            grounding: device.grounding === 'NORMAL' ? 1 : 0,
+            door: device.door === 'TERTUTUP' ? 1 : 0,
+            sirene: device.sirene === 'ON' ? 1 : 0,
+            gsm: device.gsm,
+            rssi: device.rssi,
+            timestamp: device.timestamp
+          });
+        if (!error4) {
+          console.log(`[Supabase] Successfully logged device to "${table}" (lowercase integer)`);
+          return;
+        }
       }
     }
   } catch (err) {
