@@ -22,7 +22,12 @@ let lastUsedKey = '';
 
 function getSupabaseClient() {
   let url = integrationConfig?.supabaseUrl || process.env.SUPABASE_URL;
-  const key = integrationConfig?.supabaseKey || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+  // Prefer server-side service role key to bypass RLS for administrative actions (like managing/deleting profiles)
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+              process.env.SERVICE_ROLE_KEY || 
+              integrationConfig?.supabaseKey || 
+              process.env.SUPABASE_KEY || 
+              process.env.SUPABASE_ANON_KEY;
 
   if (!url || !key) {
     return null;
@@ -751,6 +756,11 @@ let auditTrails: AuditTrail[] = [
 
 // Middleware to transparently synchronize state from client in serverless/stateless environments (e.g. Vercel)
 app.use((req, res, next) => {
+  if (integrationConfig?.supabaseEnabled) {
+    next();
+    return;
+  }
+
   if (req.body) {
     const clientSites = req.body.clientSites || req.body.sites;
     const clientConfig = req.body.clientConfig || req.body.integrationConfig;
@@ -1693,6 +1703,26 @@ app.delete('/api/users/:id', async (req, res) => {
       await client.from('profiles').delete().eq('email_address', searchVal);
 
       console.log('[Supabase Delete] Done running sequential deletion checks.');
+
+      // Verification check: retrieve current profiles from Supabase to verify if the user still exists
+      const { data: currentProfiles } = await client.from('profiles').select('*');
+      if (currentProfiles) {
+        const stillExists = currentProfiles.some((p: any) => {
+          const pId = String(p.id || '').toLowerCase();
+          const pUsername = String(p.username || p.user_name || '').toLowerCase();
+          const trgId = String(id).toLowerCase();
+          const trgSearch = String(searchVal).toLowerCase();
+          return pId === trgId || pUsername === trgId || pUsername === trgSearch;
+        });
+
+        if (stillExists) {
+          console.warn(`[Supabase Delete] Deletion failed. User "${searchVal}" still exists in profiles due to RLS.`);
+          return res.status(400).json({
+            status: 'error',
+            message: 'Gagal menghapus user dari Supabase. Hal ini disebabkan oleh aturan RLS (Row Level Security) di Supabase Anda yang memblokir perintah DELETE untuk koneksi Anon/Public. Silakan buat kebijakan/policy baru untuk tindakan DELETE pada tabel "profiles" di dasbor Supabase Anda (pilih command "DELETE", target "anon, authenticated", check "true"), ATAU tambahkan SUPABASE_SERVICE_ROLE_KEY di tab Pengaturan (Settings) AI Studio untuk bypass RLS.'
+          });
+        }
+      }
     } catch (err) {
       console.warn('[Supabase] Exception deleting user profile:', err);
     }
