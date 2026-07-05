@@ -1261,6 +1261,52 @@ app.post('/api/login', async (req, res) => {
     } catch (err) {
       console.warn('[Supabase Auth] Sign-in exception, trying local fallback:', err);
     }
+
+    // Direct database profiles check fallback (handles manual inserts or unconfirmed Auth accounts)
+    try {
+      console.log('[Supabase] Checking direct database profiles table fallback...');
+      const { data: dbProfiles, error: dbProfilesErr } = await client
+        .from('profiles')
+        .select('*');
+
+      if (!dbProfilesErr && dbProfiles && dbProfiles.length > 0) {
+        const matchedProfile = dbProfiles.find((p: any) => {
+          const pUsername = String(p.username || p.user_name || '').trim().toLowerCase();
+          const pEmail = String(p.email || p.email_address || '').trim().toLowerCase();
+          const pPassword = String(p.password || '');
+
+          const matchUser = pUsername === normUsername || pEmail === normUsername || pEmail === `${normUsername}@towerguard.com`;
+          const matchPass = pPassword === password;
+
+          return matchUser && matchPass;
+        });
+
+        if (matchedProfile) {
+          const role = matchedProfile.role === 'admin' ? 'admin' : 'viewer';
+          const displayName = matchedProfile.nama || matchedProfile.nama_lengkap || matchedProfile.username || 'User';
+          const isReadOnly = matchedProfile.is_read_only || false;
+
+          createAuditLog(displayName, 'LOGIN', 'Pengguna berhasil masuk via Database Profiles Fallback.');
+          return res.json({
+            status: 'success',
+            user: {
+              id: matchedProfile.id,
+              username: normUsername,
+              displayName: displayName,
+              role: role,
+              permissions: role === 'admin'
+                ? ['dashboard', 'monitoring', 'asset', 'alarm', 'status', 'simcard', 'users', 'settings']
+                : ['dashboard', 'monitoring', 'asset', 'alarm', 'status', 'simcard'],
+              isReadOnly: isReadOnly
+            }
+          });
+        }
+      } else if (dbProfilesErr) {
+        console.warn('[Supabase] direct database profiles fallback check error:', dbProfilesErr.message);
+      }
+    } catch (profileFallbackErr) {
+      console.warn('[Supabase] direct database profiles fallback exception:', profileFallbackErr);
+    }
   }
 
   // Local account / Admin fallback
