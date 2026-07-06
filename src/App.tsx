@@ -74,19 +74,27 @@ export default function App() {
         const localSitesStr = localStorage.getItem('tbig_sites');
         let restoreData: any = {};
         
-        if (!isSupabaseEnabled && localConfigStr) {
+        if (localConfigStr) {
           try {
             const localConfig = JSON.parse(localConfigStr);
             restoreData.integrationConfig = localConfig;
-            // If server config is empty/default but client has configured values (like gasUrl)
-            if (!needsRestore && localConfig && ((!data.integrationConfig?.gasUrl && localConfig.gasUrl) || 
-                (!data.integrationConfig?.whatsappToken && localConfig.whatsappToken))) {
-              needsRestore = true;
+            
+            // If the browser has Supabase enabled/configured, but the server currently does not (e.g. server reset), we MUST restore!
+            if (!needsRestore && localConfig) {
+              const hasClientSupabase = localConfig.supabaseEnabled || (localConfig.supabaseUrl && localConfig.supabaseKey);
+              if (hasClientSupabase && !isSupabaseEnabled) {
+                needsRestore = true;
+                console.log('[App] Restoring Supabase configuration from localStorage because server was reset...');
+              } else if (!data.integrationConfig?.gasUrl && localConfig.gasUrl) {
+                needsRestore = true;
+              } else if (!data.integrationConfig?.whatsappToken && localConfig.whatsappToken) {
+                needsRestore = true;
+              }
             }
           } catch (e) {}
         }
         
-        if (!isSupabaseEnabled && localSitesStr) {
+        if (localSitesStr) {
           try {
             const localSites = JSON.parse(localSitesStr);
             restoreData.sites = localSites;
