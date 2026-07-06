@@ -1877,7 +1877,7 @@ app.post('/api/esp32', async (req, res) => {
       siteName: site!.siteName,
       alarmType: 'GROUNDING_PUTUS',
       status: 'ACTIVE',
-      keterangan: 'Kabel Grounding terdeteksi PUTUS oleh ESP32 (GPIO18).'
+      keterangan: 'Alarm Kabel Grounding Terputus.'
     };
     alarmLogs.unshift(newLog);
     await logAlarmToSupabase(newLog);
@@ -1909,7 +1909,7 @@ app.post('/api/esp32', async (req, res) => {
       siteName: site!.siteName,
       alarmType: 'PINTU_TERBUKA',
       status: 'ACTIVE',
-      keterangan: 'Pintu Shelter BTS Terbuka oleh ESP32 (GPIO19).'
+      keterangan: 'Alarm Pintu Shelter BTS Terbuka.'
     };
     alarmLogs.unshift(newLog);
     await logAlarmToSupabase(newLog);
@@ -2124,7 +2124,7 @@ app.post('/api/test-alarm', async (req, res) => {
       siteName: site.siteName,
       alarmType: 'GROUNDING_PUTUS' as const,
       status: 'ACTIVE' as const,
-      keterangan: '[TEST] Grounding Putus dipicu manual via Dashboard.'
+      keterangan: 'TEST Alarm Grounding Putus (Simulasi via Website)'
     };
     alarmLogs.unshift(alarmEntry);
     if (isSupabase) {
@@ -2142,7 +2142,7 @@ app.post('/api/test-alarm', async (req, res) => {
       siteName: site.siteName,
       alarmType: 'PINTU_TERBUKA' as const,
       status: 'ACTIVE' as const,
-      keterangan: '[TEST] Pintu Shelter Terbuka dipicu manual via Dashboard.'
+      keterangan: 'TEST Pintu Shelter BTS Terbuka (Simulasi via Website)'
     };
     alarmLogs.unshift(alarmEntry);
     if (isSupabase) {
