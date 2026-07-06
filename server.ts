@@ -1737,7 +1737,7 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 // Post endpoint to restore client state to serverless memory
-app.post('/api/restore-state', (req, res) => {
+app.post('/api/restore-state', async (req, res) => {
   const { sites: clientSites, integrationConfig: clientConfig, alarmLogs: clientAlarms, deviceLogs: clientDeviceLogs, auditTrails: clientAudit } = req.body;
   
   if (clientSites && Array.isArray(clientSites) && clientSites.length > 0) {
@@ -1757,7 +1757,13 @@ app.post('/api/restore-state', (req, res) => {
     auditTrails = clientAudit;
   }
   
-  lastUpdateTs = Date.now();
+  // If Supabase is enabled in the restored configuration, pull the latest data from database immediately!
+  if (integrationConfig?.supabaseEnabled) {
+    console.log('[Restore] Supabase is active in restored config. Syncing database state immediately...');
+    await loadStateFromSupabase();
+  } else {
+    lastUpdateTs = Date.now();
+  }
   
   res.json({
     status: 'success',
