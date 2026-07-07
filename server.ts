@@ -836,12 +836,15 @@ async function sendWhatsAppActual(phone: string, text: string) {
   
   // Auto format phone number (e.g., 08123456789 -> 628123456789)
   let formattedPhone = phone.trim();
-  if (formattedPhone.startsWith('0')) {
-    formattedPhone = '62' + formattedPhone.slice(1);
-  } else if (formattedPhone.startsWith('+')) {
-    formattedPhone = formattedPhone.replace('+', '');
+  const isGroupId = formattedPhone.includes('@');
+  if (!isGroupId) {
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '62' + formattedPhone.slice(1);
+    } else if (formattedPhone.startsWith('+')) {
+      formattedPhone = formattedPhone.replace('+', '');
+    }
+    formattedPhone = formattedPhone.replace(/[^0-9]/g, ''); // keep only numbers
   }
-  formattedPhone = formattedPhone.replace(/[^0-9]/g, ''); // keep only numbers
   
   try {
     if (provider === 'fonnte') {
