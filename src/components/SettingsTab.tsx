@@ -46,14 +46,17 @@ export default function SettingsTab({ config, onSaveConfig, currentUser }: Setti
     const trimmed = newPhone.trim();
     if (!trimmed) return;
 
-    // Simple digits and + prefix check
-    if (!/^\+?[0-9]{5,20}$/.test(trimmed)) {
-      alert('Format nomor handphone tidak valid (gunakan angka saja, misal: 081234567890)');
+    // Support standard phone numbers and Fonnte Group IDs (e.g. 120363425590251541@g.us)
+    const isPhone = /^\+?[0-9]{5,25}$/.test(trimmed);
+    const isGroupId = /^[a-zA-Z0-9.\-_]+@[a-zA-Z0-9.\-_]+$/.test(trimmed);
+
+    if (!isPhone && !isGroupId) {
+      alert('Format nomor handphone atau ID Group Fonnte tidak valid (gunakan angka saja, atau ID Group dengan format xxx@g.us)');
       return;
     }
 
     if (phoneList.includes(trimmed)) {
-      alert('Nomor handphone sudah ada di daftar.');
+      alert('Nomor atau ID Group sudah ada di daftar.');
       return;
     }
 
