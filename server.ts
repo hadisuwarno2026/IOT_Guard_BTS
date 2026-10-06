@@ -930,12 +930,13 @@ function triggerSimulatedWhatsApp(site: Site, type: 'NORMAL' | 'GROUNDING_PUTUS'
   let text = '';
 
   if (type === 'NORMAL') {
-    text = `🟢 BTS MONITORING\n\nSITE:\n${site.siteId} - ${site.siteName}\n\nSTATUS:\nNORMAL\n\nGrounding : Normal\nDoor : Tertutup\nSirene : OFF\n\nTanggal:\n${timestampStr}`;
+    text = `🟢 BTS MONITORING\n\nSITE:\n${site.siteId} - ${site.siteName}\n\nSTATUS:\nNORMAL\n\nCable : Normal\nDoor : Tertutup\nSirene : OFF\n\nTanggal:\n${timestampStr}`;
   } else if (type === 'GROUNDING_PUTUS') {
-    text = `🔴 BTS ALARM CRITICAL\n\n⚠️ Grounding Putus\n\nSite:\n${site.siteId} - ${site.siteName}\n\nLokasi:\n${site.location}\n\nStatus:\nGROUNDING PUTUS\n\nTindakan:\nPeriksa kabel grounding segera.\n\nWaktu:\n${timestampStr}`;
+    text = `🔴 BTS ALARM CRITICAL\n\n⚠️ Cable Putus\n\nSite:\n${site.siteId} - ${site.siteName}\n\nLokasi:\n${site.location}\n\nStatus:\nCABLE PUTUS\n\nTindakan:\nPeriksa kabel segera.\n\nWaktu:\n${timestampStr}`;
   } else if (type === 'PINTU_TERBUKA') {
     text = `🟠 BTS SECURITY ALERT\n\n⚠️ Pintu BTS Terbuka\n\nSite:\n${site.siteId} - ${site.siteName}\n\nLokasi:\n${site.location}\n\nStatus:\nDOOR OPEN\n\nKemungkinan:\nAkses tidak sah\n\nWaktu:\n${timestampStr}`;
   }
+
 
   const phones = integrationConfig.whatsappPhone
     ? integrationConfig.whatsappPhone.split(/[,;\s]+/).map(p => p.trim()).filter(p => p.length > 0)
